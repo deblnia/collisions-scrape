@@ -1,6 +1,5 @@
 import os
 import smtplib
-from datetime import datetime
 from email.mime.text import MIMEText
 
 from dotenv import load_dotenv
@@ -16,17 +15,16 @@ def get_crash_location(row):
     return location
 
 
-# df is a 1 row data frame
 def single_crash_email(df, council_district, recipient_email):
     row = df.iloc[0]
     location = get_crash_location(row)
     time_crash = str(row["crash_time"])
-    today = datetime.now().strftime("%Y-%m-%d")
+    crash_date = str(row["crash_date"])[:10]
 
     msg = MIMEText(
         f"""Dear Council Member,
 
-    On {today} at {time_crash}, there was a motor vehicle crash at {location} in your district that resulted in an injury.
+    On {crash_date} at {time_crash}, there was a motor vehicle crash at {location} in your district that resulted in an injury.
     Since 2014, New York has adopted a Vision Zero policy affirming that motor vehicle crashes are preventable. Could this crash have been prevented?
 
     Thank you for your time and attention,
@@ -35,7 +33,7 @@ def single_crash_email(df, council_district, recipient_email):
     """
     )
 
-    msg["Subject"] = f"Vision Zero: Injury Crash in District {council_district} {today}"
+    msg["Subject"] = f"Vision Zero: Injury Crash in District {council_district} {crash_date}"
     msg["From"] = os.getenv("GMAIL_EMAIL")
     msg["To"] = recipient_email
 
@@ -43,17 +41,17 @@ def single_crash_email(df, council_district, recipient_email):
 
 
 def multiple_crash_email(df, council_district, recipient_email):
-    today = datetime.now().strftime("%Y-%m-%d")
     num_crashes = len(df)
 
     crash_details = []
     for _, row in df.iterrows():
         location = get_crash_location(row)
         time_crash = str(row["crash_time"])
+        crash_date = str(row["crash_date"])[:10]
         injured = int(row.get("number_of_persons_injured", 0))
         killed = int(row.get("number_of_persons_killed", 0))
         crash_details.append(
-            f"    - {time_crash} at {location}: {injured} injured, {killed} killed"
+            f"    - {crash_date} {time_crash} at {location}: {injured} injured, {killed} killed"
         )
 
     crash_list = "\n".join(crash_details)
@@ -61,7 +59,7 @@ def multiple_crash_email(df, council_district, recipient_email):
     msg = MIMEText(
         f"""Dear Council Member,
 
-    On {today}, there were {num_crashes} motor vehicle crashes in your district that resulted in injuries:
+    There were {num_crashes} new motor vehicle crashes in your district that resulted in injuries:
 
 {crash_list}
 
@@ -74,7 +72,7 @@ def multiple_crash_email(df, council_district, recipient_email):
     )
 
     msg["Subject"] = (
-        f"Vision Zero: {num_crashes} Injury Crashes in District {council_district} {today}"
+        f"Vision Zero: {num_crashes} New Injury Crashes in District {council_district}"
     )
     msg["From"] = os.getenv("GMAIL_EMAIL")
     msg["To"] = recipient_email
@@ -82,47 +80,30 @@ def multiple_crash_email(df, council_district, recipient_email):
     return msg
 
 
-# sends an email about injury accidents to the council member of that district
-def send_injury_email(df, council_district):
+def send_injury_email(df):
+    """Send an email about new injury crashes to the council member of that district.
+
+    df should be pre-filtered to only contain new injury crashes for a single district.
+    """
     load_dotenv()
-    today = datetime.now().strftime("%Y-%m-%d")
 
-    # get injury crashes from today in the given council district
-    df_district = df[df["CounDist"] == council_district]
-
-    # get the council member's email from the data
-    district_emails = df_district["email"].dropna().unique()
+    district_emails = df["email"].dropna().unique()
     if len(district_emails) == 0:
-        print(f"No email found for district {council_district}, skipping.")
         return
     recipient_email = district_emails[0]
 
-    # crash_date may be in ISO format (e.g. "2026-03-10T00:00:00.000"), so
-    # compare only the date portion
-    df_injury_cd_current = df_district[
-        (df_district["crash_date"].str[:10] == today)
-        & (
-            (df_district["number_of_persons_injured"].astype(int)
-             + df_district["number_of_persons_killed"].astype(int))
-            > 0
-        )
-    ]
+    council_district = int(df["CounDist"].iloc[0])
 
-    # if there were no injury accidents in the council district on this day, then return
-    if df_injury_cd_current.shape[0] == 0:
-        return
-    # if there was exactly 1 injury accident, send that kind of email
-    elif df_injury_cd_current.shape[0] == 1:
-        msg = single_crash_email(df_injury_cd_current, council_district, recipient_email)
+    if len(df) == 1:
+        msg = single_crash_email(df, council_district, recipient_email)
     else:
-        msg = multiple_crash_email(df_injury_cd_current, council_district, recipient_email)
+        msg = multiple_crash_email(df, council_district, recipient_email)
 
     SMTP_SERVER = "smtp.gmail.com"
     SMTP_PORT = 587
     SENDER_EMAIL = os.getenv("GMAIL_EMAIL")
     SENDER_PASSWORD = os.getenv("APP_PASSWORD")
 
-    # Send email
     with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
         server.starttls()
         server.login(SENDER_EMAIL, SENDER_PASSWORD)

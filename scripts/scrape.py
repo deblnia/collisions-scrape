@@ -33,15 +33,23 @@ try:
     print(f"Boroughs represented: {df['borough'].unique().tolist()}")
 
     output_file = "./data/latest_collisions.csv"
+    boundary_file = "./data/city_council_boundaries.csv"
+
+    # Load previous collision IDs so we only email about new crashes
+    try:
+        old_df = pd.read_csv(output_file)
+        old_ids = set(old_df["collision_id"].astype(str))
+        print(f"Previous CSV had {len(old_ids)} collisions")
+    except FileNotFoundError:
+        old_ids = set()
+        print("No previous CSV found, treating all crashes as new")
+
     df.to_csv(output_file, index=False)
     print(f"Data saved to {output_file}")
 
     # Assign districts using district_helper
-    collision_file = "./data/latest_collisions.csv"
-    boundary_file = "./data/city_council_boundaries.csv"
-
     try:
-        collisions_gdf, boundaries_gdf = load_data(collision_file, boundary_file)
+        collisions_gdf, boundaries_gdf = load_data(output_file, boundary_file)
         merged_gdf = assign_districts(collisions_gdf, boundaries_gdf)
 
         # Drop unwanted columns before saving
@@ -58,16 +66,30 @@ try:
         )
         print(f"Updated data saved with districts to {output_file}")
 
-        # Send injury emails to council members for each district
+        # Find new injury crashes not in the previous CSV
         if "CounDist" in merged_gdf.columns:
-            districts = merged_gdf["CounDist"].dropna().unique()
-            for district in districts:
-                try:
-                    send_injury_email(merged_gdf, district)
-                except Exception as email_error:
-                    print(
-                        f"Error sending email for district {district}: {str(email_error)}"
-                    )
+            new_crashes = merged_gdf[
+                ~merged_gdf["collision_id"].astype(str).isin(old_ids)
+            ]
+            new_injury_crashes = new_crashes[
+                (new_crashes["number_of_persons_injured"].astype(int)
+                 + new_crashes["number_of_persons_killed"].astype(int))
+                > 0
+            ]
+            print(f"New crashes: {len(new_crashes)}, with injuries: {len(new_injury_crashes)}")
+
+            if len(new_injury_crashes) > 0:
+                districts = new_injury_crashes["CounDist"].dropna().unique()
+                for district in districts:
+                    try:
+                        district_crashes = new_injury_crashes[
+                            new_injury_crashes["CounDist"] == district
+                        ]
+                        send_injury_email(district_crashes)
+                    except Exception as email_error:
+                        print(
+                            f"Error sending email for district {district}: {str(email_error)}"
+                        )
 
     except Exception as district_error:
         print(f"Error assigning districts: {str(district_error)}")
