@@ -12,6 +12,9 @@ def load_data(collision_file, boundary_file):
     if 'latitude' not in collisions.columns or 'longitude' not in collisions.columns:
         raise ValueError("Collision file must contain 'latitude' and 'longitude' columns")
     
+    # Drop columns that will come from the boundary data to avoid suffixed duplicates
+    collisions = collisions.drop(columns=['CounDist', 'email'], errors='ignore')
+
     # Convert to GeoDataFrame
     collisions['geometry'] = collisions.apply(lambda row: Point(row['longitude'], row['latitude']), axis=1)
     collisions_gdf = gpd.GeoDataFrame(collisions, geometry='geometry', crs='EPSG:4326')

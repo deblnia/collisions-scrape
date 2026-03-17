@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 from district_helper import assign_districts, load_data
-from send_mail import send_crash_summary_email
+from send_mail import send_injury_email
 from sodapy import Socrata
 
 try:
@@ -57,24 +57,20 @@ try:
             output_file, index=False
         )
         print(f"Updated data saved with districts to {output_file}")
+
+        # Send injury emails to council members for each district
+        if "CounDist" in merged_gdf.columns:
+            districts = merged_gdf["CounDist"].dropna().unique()
+            for district in districts:
+                try:
+                    send_injury_email(merged_gdf, district)
+                except Exception as email_error:
+                    print(
+                        f"Error sending email for district {district}: {str(email_error)}"
+                    )
+
     except Exception as district_error:
         print(f"Error assigning districts: {str(district_error)}")
-
-    summary = {
-        "record_count": len(df),
-        "date_range": {
-            "earliest": df["crash_date"].min(),
-            "latest": df["crash_date"].max(),
-        },
-        "total_injured": df["number_of_persons_injured"].sum(),
-        "total_killed": df["number_of_persons_killed"].sum(),
-        "boroughs": df["borough"].value_counts().to_dict(),
-    }
-
-    send_crash_summary_email(summary)
-
-    with open(f"summary_{today}.json", "w") as f:
-        json.dump(summary, f, indent=2)
 
 except Exception as e:
     print(f"Error occurred: {str(e)}")
