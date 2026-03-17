@@ -2,7 +2,7 @@ name: NYC Collision Data Scraper
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # still midnight
+    - cron: '0 5 * * *'  # midnight EST (5:00 UTC)
   workflow_dispatch:      # mostly for testing
 
 jobs:
