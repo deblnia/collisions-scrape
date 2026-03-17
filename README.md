@@ -1,2 +1,2 @@
 # collisions-scrape
-Scraping the NYC motor vehicle collisions dataset into a flat CSV 
+Scrapes NYC Open Data for vehicle collisions, and emails council members when a collision occurs in their district.
